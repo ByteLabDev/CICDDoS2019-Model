@@ -45,14 +45,24 @@ class DataLoader:
                 return df.sample(frac=1).reset_index(drop=True)
         return pd.DataFrame()
 
-    def get_data(self, sample_size_per_file=5000):
+    def get_data(self, max_samples_per_class=500000):
+        import json
+        self.raw_counts = {'Benign': 0, 'Attack': 0}
+        counts_path = self.processed_path + ".counts.json"
+        
         # Check cache
         if os.path.exists(self.processed_path):
             print(f"Loading cached data from {self.processed_path}...")
+            if os.path.exists(counts_path):
+                with open(counts_path, "r") as f:
+                    self.raw_counts = json.load(f)
             return pd.read_parquet(self.processed_path)
 
         print("No cache found. Processing raw files...")
-        combined_df = []
+        combined_benign = []
+        combined_attack = []
+        b_len = 0
+        a_len = 0
         
         for root, _, files in os.walk(self.raw_dir):
             for file in files:
@@ -62,11 +72,6 @@ class DataLoader:
                     try:
                         # Chunking to prevent memory errors
                         chunks = pd.read_csv(path, low_memory=False, on_bad_lines='skip', chunksize=50000)
-                        
-                        file_benign = []
-                        file_attack = []
-                        b_len = 0
-                        a_len = 0
 
                         for chunk in chunks:
                             cleaned_chunk = self.clean_data(chunk, balance=False)
@@ -74,37 +79,45 @@ class DataLoader:
                                 benign = cleaned_chunk[cleaned_chunk['Label'] == 0]
                                 attack = cleaned_chunk[cleaned_chunk['Label'] == 1]
                                 
+                                self.raw_counts['Benign'] += len(benign)
+                                self.raw_counts['Attack'] += len(attack)
+                                
                                 if not benign.empty:
-                                    file_benign.append(benign)
+                                    combined_benign.append(benign)
                                     b_len += len(benign)
-                                    if b_len > 200000:
-                                        temp_b = pd.concat(file_benign, ignore_index=True)
-                                        file_benign = [temp_b.sample(n=100000)]
-                                        b_len = 100000
+                                    if b_len > max_samples_per_class * 2:
+                                        temp_b = pd.concat(combined_benign, ignore_index=True)
+                                        combined_benign = [temp_b.sample(n=max_samples_per_class)]
+                                        b_len = max_samples_per_class
                                         
                                 if not attack.empty:
-                                    file_attack.append(attack)
+                                    combined_attack.append(attack)
                                     a_len += len(attack)
-                                    if a_len > 200000:
-                                        temp_a = pd.concat(file_attack, ignore_index=True)
-                                        file_attack = [temp_a.sample(n=100000)]
-                                        a_len = 100000
+                                    if a_len > max_samples_per_class * 2:
+                                        temp_a = pd.concat(combined_attack, ignore_index=True)
+                                        combined_attack = [temp_a.sample(n=max_samples_per_class)]
+                                        a_len = max_samples_per_class
 
-                        if file_benign and file_attack:
-                            all_benign = pd.concat(file_benign, ignore_index=True)
-                            all_attack = pd.concat(file_attack, ignore_index=True)
-                            
-                            n_samples = min(len(all_benign), len(all_attack), sample_size_per_file // 2)
-                            if n_samples > 0:
-                                balanced_df = pd.concat([all_benign.sample(n_samples), all_attack.sample(n_samples)])
-                                combined_df.append(balanced_df.sample(frac=1).reset_index(drop=True))
                     except Exception as e:
                         print(f"Could not process {file}: {e}")
 
-        if not combined_df:
+        if not combined_benign or not combined_attack:
             raise ValueError("No data loaded. Check raw_data_dir.")
 
-        full_df = pd.concat(combined_df, ignore_index=True)
+        all_benign = pd.concat(combined_benign, ignore_index=True).drop_duplicates()
+        all_attack = pd.concat(combined_attack, ignore_index=True).drop_duplicates()
+        
+        n_samples = min(len(all_benign), len(all_attack), max_samples_per_class)
+        if n_samples > 0:
+            balanced_df = pd.concat([all_benign.sample(n_samples), all_attack.sample(n_samples)])
+            full_df = balanced_df.sample(frac=1).reset_index(drop=True)
+        else:
+            raise ValueError("Not enough data to balance.")
+
         os.makedirs(os.path.dirname(self.processed_path), exist_ok=True)
         full_df.to_parquet(self.processed_path)
+        
+        with open(counts_path, "w") as f:
+            json.dump(self.raw_counts, f)
+            
         return full_df

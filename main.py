@@ -7,7 +7,7 @@ import numpy as np
 
 # 1. Load Data (Checks for cache automatically)
 loader = DataLoader(raw_data_dir='data/')
-df = loader.get_data(sample_size_per_file=5000)
+df = loader.get_data(max_samples_per_class=500000)
 
 # 2. Manual Split
 df = df.sample(frac=1).reset_index(drop=True)
@@ -38,4 +38,10 @@ preds = model.predict(X_test_scaled)
 metrics, conf_data = eval_tool.calculate_metrics(y_test, preds)
 
 print("Results:", metrics)
+
+# Plot class imbalance
+raw_counts = loader.raw_counts
+balanced_counts = {'Benign': len(df[df['Label'] == 0]), 'Attack': len(df[df['Label'] == 1])}
+eval_tool.plot_class_distribution(raw_counts, balanced_counts)
+
 eval_tool.plot_results(metrics, conf_data)

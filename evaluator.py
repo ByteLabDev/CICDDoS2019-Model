@@ -32,3 +32,19 @@ class Evaluator:
         sns.heatmap(cm, annot=True, fmt='d', cmap='Greens', ax=ax2)
         ax2.set_title("Confusion Matrix")
         plt.show()
+
+    def plot_class_distribution(self, raw_counts, balanced_counts):
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+        
+        # Raw Data Imbalance
+        ax1.bar(raw_counts.keys(), raw_counts.values(), color=['lightgreen', 'salmon'])
+        ax1.set_title(f"Raw Data Class Imbalance\n(Total: {sum(raw_counts.values()):,})")
+        ax1.set_ylabel("Number of Samples")
+        
+        # Balanced Data
+        ax2.bar(balanced_counts.keys(), balanced_counts.values(), color=['lightgreen', 'salmon'])
+        ax2.set_title(f"Balanced Data (Used for Model)\n(Total: {sum(balanced_counts.values()):,})")
+        ax2.set_ylabel("Number of Samples")
+        
+        plt.tight_layout()
+        plt.show()
