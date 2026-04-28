@@ -5,22 +5,19 @@ import numpy as np
 class ManualScaler:
     def fit_transform(self, X):
         X = np.array(X, dtype=float)
-        # Replace any residual NaNs with 0 before math
-        X = np.nan_to_num(X) 
+        X = np.nan_to_num(X)
         
-        self.min = X.min(axis=0)
-        self.max = X.max(axis=0)
+        self.mean = np.mean(X, axis=0)
+        self.std = np.std(X, axis=0)
         
-        range_val = self.max - self.min
-        # If range is 0 (constant column), denom is 1 to avoid div by zero
-        denom = np.where(range_val == 0, 1.0, range_val)
-        return (X - self.min) / denom
+        # Standart sapması 0 olan kolonlar (sabit değerler) için sıfıra bölme hatasını önle
+        self.std = np.where(self.std == 0, 1.0, self.std) 
+        return (X - self.mean) / self.std
 
     def transform(self, X):
         X = np.array(X, dtype=float)
-        range_val = self.max - self.min
-        denom = np.where(range_val == 0, 1, range_val)
-        return (X - self.min) / denom
+        X = np.nan_to_num(X)
+        return (X - self.mean) / self.std
 
 class CustomLogisticRegression:
     def __init__(self, lr=0.05, epochs=1000):

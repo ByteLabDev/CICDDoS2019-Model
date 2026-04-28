@@ -13,7 +13,7 @@ class DataLoader:
         self.raw_dir = raw_data_dir
         self.processed_path = processed_path
 
-    def clean_data(self, df):
+    def clean_data(self, df, balance=True):
         df.columns = df.columns.str.strip()
         
         # Extract labels early
@@ -31,14 +31,18 @@ class DataLoader:
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
         df.dropna(axis=0, how='any', inplace=True) # Ensure rows are dropped
 
+        if not balance:
+            return df
+
         # Balance classes
-        benign = df[df['Label'] == 0]
-        attack = df[df['Label'] == 1]
-        n_samples = min(len(benign), len(attack))
-        
-        if n_samples > 0:
-            df = pd.concat([benign.sample(n_samples), attack.sample(n_samples)])
-            return df.sample(frac=1).reset_index(drop=True)
+        if 'Label' in df.columns:
+            benign = df[df['Label'] == 0]
+            attack = df[df['Label'] == 1]
+            n_samples = min(len(benign), len(attack))
+            
+            if n_samples > 0:
+                df = pd.concat([benign.sample(n_samples), attack.sample(n_samples)])
+                return df.sample(frac=1).reset_index(drop=True)
         return pd.DataFrame()
 
     def get_data(self, sample_size_per_file=5000):
@@ -57,15 +61,43 @@ class DataLoader:
                     print(f"Processing: {file}")
                     try:
                         # Chunking to prevent memory errors
-                        chunks = pd.read_csv(path, low_memory=False, on_bad_lines='skip', chunksize=10000)
-                        first_chunk = next(chunks)
+                        chunks = pd.read_csv(path, low_memory=False, on_bad_lines='skip', chunksize=50000)
                         
-                        actual_sample = min(len(first_chunk), sample_size_per_file)
-                        temp_df = first_chunk.sample(n=actual_sample)
-                        
-                        # Apply the cleaning logic
-                        cleaned = self.clean_data(temp_df)
-                        combined_df.append(cleaned)
+                        file_benign = []
+                        file_attack = []
+                        b_len = 0
+                        a_len = 0
+
+                        for chunk in chunks:
+                            cleaned_chunk = self.clean_data(chunk, balance=False)
+                            if not cleaned_chunk.empty and 'Label' in cleaned_chunk.columns:
+                                benign = cleaned_chunk[cleaned_chunk['Label'] == 0]
+                                attack = cleaned_chunk[cleaned_chunk['Label'] == 1]
+                                
+                                if not benign.empty:
+                                    file_benign.append(benign)
+                                    b_len += len(benign)
+                                    if b_len > 200000:
+                                        temp_b = pd.concat(file_benign, ignore_index=True)
+                                        file_benign = [temp_b.sample(n=100000)]
+                                        b_len = 100000
+                                        
+                                if not attack.empty:
+                                    file_attack.append(attack)
+                                    a_len += len(attack)
+                                    if a_len > 200000:
+                                        temp_a = pd.concat(file_attack, ignore_index=True)
+                                        file_attack = [temp_a.sample(n=100000)]
+                                        a_len = 100000
+
+                        if file_benign and file_attack:
+                            all_benign = pd.concat(file_benign, ignore_index=True)
+                            all_attack = pd.concat(file_attack, ignore_index=True)
+                            
+                            n_samples = min(len(all_benign), len(all_attack), sample_size_per_file // 2)
+                            if n_samples > 0:
+                                balanced_df = pd.concat([all_benign.sample(n_samples), all_attack.sample(n_samples)])
+                                combined_df.append(balanced_df.sample(frac=1).reset_index(drop=True))
                     except Exception as e:
                         print(f"Could not process {file}: {e}")
 
