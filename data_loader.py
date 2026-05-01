@@ -9,9 +9,10 @@ import numpy as np
 import os
 
 class DataLoader:
-    def __init__(self, raw_data_dir, processed_path='data/processed_data.parquet'):
+    def __init__(self, raw_data_dir, train_path='data/train_data.parquet', test_path='data/test_data.parquet'):
         self.raw_dir = raw_data_dir
-        self.processed_path = processed_path
+        self.train_path = train_path
+        self.test_path = test_path
 
     def clean_data(self, df, balance=True):
         df.columns = df.columns.str.strip()
@@ -45,18 +46,18 @@ class DataLoader:
                 return df.sample(frac=1).reset_index(drop=True)
         return pd.DataFrame()
 
-    def get_data(self, max_samples_per_class=500000):
+    def get_data(self, max_samples_per_class=500000, test_size=0.2):
         import json
         self.raw_counts = {'Benign': 0, 'Attack': 0}
-        counts_path = self.processed_path + ".counts.json"
+        counts_path = "data/counts.json"
         
         # Check cache
-        if os.path.exists(self.processed_path):
-            print(f"Loading cached data from {self.processed_path}...")
+        if os.path.exists(self.train_path) and os.path.exists(self.test_path):
+            print(f"Loading cached data from {self.train_path} and {self.test_path}...")
             if os.path.exists(counts_path):
                 with open(counts_path, "r") as f:
                     self.raw_counts = json.load(f)
-            return pd.read_parquet(self.processed_path)
+            return pd.read_parquet(self.train_path), pd.read_parquet(self.test_path)
 
         print("No cache found. Processing raw files...")
         combined_benign = []
@@ -107,17 +108,26 @@ class DataLoader:
         all_benign = pd.concat(combined_benign, ignore_index=True).drop_duplicates()
         all_attack = pd.concat(combined_attack, ignore_index=True).drop_duplicates()
         
-        n_samples = min(len(all_benign), len(all_attack), max_samples_per_class)
-        if n_samples > 0:
-            balanced_df = pd.concat([all_benign.sample(n_samples), all_attack.sample(n_samples)])
-            full_df = balanced_df.sample(frac=1).reset_index(drop=True)
-        else:
-            raise ValueError("Not enough data to balance.")
+        if len(all_benign) == 0 and len(all_attack) == 0:
+            raise ValueError("No data loaded.")
 
-        os.makedirs(os.path.dirname(self.processed_path), exist_ok=True)
-        full_df.to_parquet(self.processed_path)
+        n_benign = min(len(all_benign), max_samples_per_class)
+        n_attack = min(len(all_attack), max_samples_per_class)
+        
+        final_benign = all_benign.sample(n_benign) if n_benign > 0 else all_benign
+        final_attack = all_attack.sample(n_attack) if n_attack > 0 else all_attack
+        
+        full_df = pd.concat([final_benign, final_attack]).sample(frac=1).reset_index(drop=True)
+
+        split_idx = int(len(full_df) * (1 - test_size))
+        train_df = full_df.iloc[:split_idx]
+        test_df = full_df.iloc[split_idx:]
+
+        os.makedirs(os.path.dirname(self.train_path), exist_ok=True)
+        train_df.to_parquet(self.train_path)
+        test_df.to_parquet(self.test_path)
         
         with open(counts_path, "w") as f:
             json.dump(self.raw_counts, f)
             
-        return full_df
+        return train_df, test_df
