@@ -111,17 +111,25 @@ class DataLoader:
         if len(all_benign) == 0 and len(all_attack) == 0:
             raise ValueError("No data loaded.")
 
-        n_benign = min(len(all_benign), max_samples_per_class)
-        n_attack = min(len(all_attack), max_samples_per_class)
-        
-        final_benign = all_benign.sample(n_benign) if n_benign > 0 else all_benign
-        final_attack = all_attack.sample(n_attack) if n_attack > 0 else all_attack
-        
-        full_df = pd.concat([final_benign, final_attack]).sample(frac=1).reset_index(drop=True)
+        # 1. Combine all data to preserve original distribution before splitting
+        full_df = pd.concat([all_benign, all_attack]).sample(frac=1, random_state=42).reset_index(drop=True)
 
+        # 2. Split into train and test
         split_idx = int(len(full_df) * (1 - test_size))
         train_df = full_df.iloc[:split_idx]
         test_df = full_df.iloc[split_idx:]
+
+        # 3. Apply transformations (max_samples_per_class limiting) to train_df ONLY
+        train_benign = train_df[train_df['Label'] == 0]
+        train_attack = train_df[train_df['Label'] == 1]
+        
+        n_benign = min(len(train_benign), max_samples_per_class)
+        n_attack = min(len(train_attack), max_samples_per_class)
+        
+        final_train_benign = train_benign.sample(n_benign, random_state=42) if n_benign > 0 else train_benign
+        final_train_attack = train_attack.sample(n_attack, random_state=42) if n_attack > 0 else train_attack
+        
+        train_df = pd.concat([final_train_benign, final_train_attack]).sample(frac=1, random_state=42).reset_index(drop=True)
 
         os.makedirs(os.path.dirname(self.train_path), exist_ok=True)
         train_df.to_parquet(self.train_path)
