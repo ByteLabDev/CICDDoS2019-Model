@@ -1,0 +1,17 @@
+{
+  "data": {
+    "raw_data_dir": "data/",
+    "max_samples_per_class": 500000,
+    "test_size": 0.2
+  },
+  "model": {
+    "lr": 0.1,
+    "epochs": 50,
+    "batch_size": 8192
+  },
+  "paths": {
+    "output_dir": "output/",
+    "model_path": "output/model.npz",
+    "scaler_path": "output/scaler.npz"
+  }
+}

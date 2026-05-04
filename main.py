@@ -17,6 +17,8 @@ y_train = train_df['Label'].values
 X_test = test_df.drop('Label', axis=1).values
 y_test = test_df['Label'].values
 
+before_smote_counts = {'Benign': int(np.sum(y_train == 0)), 'Attack': int(np.sum(y_train == 1))}
+
 # Clean any remaining NaNs or Infs before SMOTE
 X_train = np.nan_to_num(np.array(X_train, dtype=float))
 X_test = np.nan_to_num(np.array(X_test, dtype=float))
@@ -71,4 +73,4 @@ print("Results:", metrics)
 # Plot interactive figures in one window
 raw_counts = loader.raw_counts
 print("Launching interactive chart viewer...")
-eval_tool.plot_interactive_view(raw_counts, balanced_counts, metrics, conf_data, train_df)
+eval_tool.plot_interactive_view(raw_counts, before_smote_counts, balanced_counts, metrics, conf_data, train_df)

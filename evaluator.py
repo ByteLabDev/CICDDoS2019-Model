@@ -1,5 +1,3 @@
-# evaluator.py
-
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -18,13 +16,13 @@ class Evaluator:
 
         return {"Accuracy": accuracy, "Precision": precision, "Recall": recall, "F1": f1}, [tn, fp, fn, tp]
 
-    def plot_interactive_view(self, raw_counts, balanced_counts, metrics, conf_matrix, df, top_n=15):
+    def plot_interactive_view(self, raw_counts, before_smote_counts, balanced_counts, metrics, conf_matrix, df, top_n=15):
         import pandas as pd
         
         fig, ax = plt.subplots(figsize=(12, 9))
         
         current_view = [0]
-        views_count = 5
+        views_count = 8  # Increased to accommodate the facts view
         
         def draw_view(view_idx):
             ax.clear()
@@ -33,28 +31,29 @@ class Evaluator:
                 ax.set_title(f"Raw Data Class Imbalance\n(Total: {sum(raw_counts.values()):,})")
                 ax.set_ylabel("Number of Samples")
             elif view_idx == 1:
-                ax.bar(balanced_counts.keys(), balanced_counts.values(), color=['lightgreen', 'salmon'])
-                ax.set_title(f"Balanced Data (Used for Model)\n(Total: {sum(balanced_counts.values()):,})")
+                ax.bar(before_smote_counts.keys(), before_smote_counts.values(), color=['lightgreen', 'salmon'])
+                ax.set_title(f"Before SMOTE Data (Training Split)\n(Total: {sum(before_smote_counts.values()):,})")
                 ax.set_ylabel("Number of Samples")
             elif view_idx == 2:
+                ax.bar(balanced_counts.keys(), balanced_counts.values(), color=['lightgreen', 'salmon'])
+                ax.set_title(f"After SMOTE Data (Used for Model)\n(Total: {sum(balanced_counts.values()):,})")
+                ax.set_ylabel("Number of Samples")
+            elif view_idx == 3:
                 ax.bar(metrics.keys(), metrics.values(), color='skyblue')
                 ax.set_ylim(0, 1.05)
                 for i, v in enumerate(metrics.values()):
                     ax.text(i, v + 0.01, f"{v:.4f}", ha='center')
                 ax.set_title("Performance Metrics")
-            elif view_idx == 3:
+            elif view_idx == 4:
                 tn, fp, fn, tp = conf_matrix
                 cm = np.array([[tn, fp], [fn, tp]])
                 sns.heatmap(cm, annot=True, fmt='d', cmap='Greens', ax=ax, cbar=False)
                 ax.set_title("Confusion Matrix")
                 ax.set_xlabel("Predicted")
                 ax.set_ylabel("Actual")
-            elif view_idx == 4:
+            elif view_idx == 5:
                 if 'Label' in df.columns:
-                    if len(df) > 50000:
-                        df_sample = df.sample(50000, random_state=42)
-                    else:
-                        df_sample = df
+                    df_sample = df.sample(min(50000, len(df)), random_state=42)
                     correlations = df_sample.corr()['Label'].abs().sort_values(ascending=False)
                     top_features = correlations.index[:top_n].tolist()
                     corr_matrix = df_sample[top_features].corr()
@@ -62,6 +61,39 @@ class Evaluator:
                     ax.set_title(f"Correlation Matrix (Top {top_n} Features Correlated with Label)")
                 else:
                     ax.text(0.5, 0.5, "Label column not found", ha='center', va='center')
+            elif view_idx == 6:
+                if 'Label' in df.columns:
+                    df_sample = df.sample(min(50000, len(df)), random_state=42)
+                    corr_matrix = df_sample.corr()
+                    sns.heatmap(corr_matrix, annot=False, cmap='coolwarm', ax=ax, xticklabels=True, yticklabels=True)
+                    ax.tick_params(axis='both', which='major', labelsize=8)
+                    plt.xticks(rotation=90)
+                    plt.yticks(rotation=0)
+                    ax.set_title(f"Correlation Matrix (All {len(df_sample.columns)} Features)")
+                    fig.tight_layout()
+                else:
+                    ax.text(0.5, 0.5, "Label column not found", ha='center', va='center')
+            
+            # --- NEW VIEW: DATASET FACTS ---
+            elif view_idx == 7:
+                ax.axis('off')
+                facts_text = (
+                    "CIC-DDoS2019 Dataset Facts\n"
+                    "--------------------------------------------------\n\n"
+                    "• Dataset Origin: Canadian Institute for Cybersecurity (UNB)\n"
+                    "• Total Original Features: 87 (extracted via CICFlowMeter-V3)\n"
+                    "• Numeric Features: 80 (statistical flow metrics)\n"
+                    "• Non-numeric Features: 7 (Flow ID, IP Source/Dest, Timestamp, etc.)\n"
+                    "• Attack Types: 12 (NTP, DNS, LDAP, MSSQL, NetBIOS, SNMP, SSDP, UDP, etc.)\n"
+                    "• Primary Paper: Sharafaldin et al. (2019)\n\n"
+                    "Preprocessing Applied in this Session:\n"
+                    f"• Current Column Count: {len(df.columns)}\n"
+                    f"• Total Samples: {len(df):,}\n"
+                    "• Balanced via SMOTE: Yes\n"
+                    "• Non-numeric Labels: Removed"
+                )
+                ax.text(0.05, 0.95, facts_text, transform=ax.transAxes, fontsize=12,
+                        verticalalignment='top', family='monospace', bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
             
             fig.canvas.draw_idle()
 
@@ -73,17 +105,12 @@ class Evaluator:
             current_view[0] = (current_view[0] - 1) % views_count
             draw_view(current_view[0])
 
-        # Hijack the default Matplotlib toolbar's back and forward buttons
         if fig.canvas.toolbar is not None:
             toolbar = fig.canvas.toolbar
-            
-            # Re-wire the actual UI buttons to our functions
-            if hasattr(toolbar, '_buttons'): # Tkinter backend
-                if 'Back' in toolbar._buttons:
-                    toolbar._buttons['Back'].config(command=prev_view)
-                if 'Forward' in toolbar._buttons:
-                    toolbar._buttons['Forward'].config(command=next_view)
-            elif hasattr(toolbar, '_actions'): # Qt backend
+            if hasattr(toolbar, '_buttons'):
+                if 'Back' in toolbar._buttons: toolbar._buttons['Back'].config(command=prev_view)
+                if 'Forward' in toolbar._buttons: toolbar._buttons['Forward'].config(command=next_view)
+            elif hasattr(toolbar, '_actions'):
                 if 'Back' in toolbar._actions:
                     try:
                         toolbar._actions['Back'].triggered.disconnect()
@@ -95,22 +122,16 @@ class Evaluator:
                         toolbar._actions['Forward'].triggered.connect(next_view)
                     except: pass
 
-            # Fallback for underlying methods
             toolbar.forward = next_view
             toolbar.back = prev_view
             
-            # Override set_history_buttons to ensure our hijacked buttons stay enabled
             def override_set_history_buttons(*args, **kwargs):
                 if hasattr(toolbar, '_actions'):
-                    if 'Back' in toolbar._actions:
-                        toolbar._actions['Back'].set_enabled(True)
-                    if 'Forward' in toolbar._actions:
-                        toolbar._actions['Forward'].set_enabled(True)
+                    if 'Back' in toolbar._actions: toolbar._actions['Back'].set_enabled(True)
+                    if 'Forward' in toolbar._actions: toolbar._actions['Forward'].set_enabled(True)
                 elif hasattr(toolbar, '_buttons'):
-                    if 'Back' in toolbar._buttons:
-                        toolbar._buttons['Back'].config(state='normal')
-                    if 'Forward' in toolbar._buttons:
-                        toolbar._buttons['Forward'].config(state='normal')
+                    if 'Back' in toolbar._buttons: toolbar._buttons['Back'].config(state='normal')
+                    if 'Forward' in toolbar._buttons: toolbar._buttons['Forward'].config(state='normal')
                         
             toolbar.set_history_buttons = override_set_history_buttons
             toolbar.set_history_buttons()
