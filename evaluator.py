@@ -16,16 +16,27 @@ class Evaluator:
 
         return {"Accuracy": accuracy, "Precision": precision, "Recall": recall, "F1": f1}, [tn, fp, fn, tp]
 
-    def plot_interactive_view(self, raw_counts, before_smote_counts, balanced_counts, metrics, conf_matrix, df, top_n=15):
+    def plot_interactive_view(self, raw_counts, before_smote_counts, balanced_counts, train_metrics, train_conf_matrix, test_metrics, test_conf_matrix, df, top_n=15):
         import pandas as pd
         
         fig, ax = plt.subplots(figsize=(12, 9))
         
+        # Capture original axes position to restore it after heatmap shrinking
+        original_ax_pos = ax.get_position()
+        
         current_view = [0]
-        views_count = 8  # Increased to accommodate the facts view
+        views_count = 10
         
         def draw_view(view_idx):
+            # Clear any existing colorbars/extra axes from previous views
+            for extra_ax in fig.axes:
+                if extra_ax is not ax:
+                    fig.delaxes(extra_ax)
+            
             ax.clear()
+            ax.set_position(original_ax_pos) # Restore original position
+            ax.axis('on')  # Ensure axis is on (it might have been turned off by View 9)
+            
             if view_idx == 0:
                 ax.bar(raw_counts.keys(), raw_counts.values(), color=['lightgreen', 'salmon'])
                 ax.set_title(f"Raw Data Class Imbalance\n(Total: {sum(raw_counts.values()):,})")
@@ -36,22 +47,35 @@ class Evaluator:
                 ax.set_ylabel("Number of Samples")
             elif view_idx == 2:
                 ax.bar(balanced_counts.keys(), balanced_counts.values(), color=['lightgreen', 'salmon'])
-                ax.set_title(f"After SMOTE Data (Used for Model)\n(Total: {sum(balanced_counts.values()):,})")
+                ax.set_title(f"After SMOTE Data (Used for Training)\n(Total: {sum(balanced_counts.values()):,})")
                 ax.set_ylabel("Number of Samples")
             elif view_idx == 3:
-                ax.bar(metrics.keys(), metrics.values(), color='skyblue')
+                ax.bar(train_metrics.keys(), train_metrics.values(), color='mediumseagreen')
                 ax.set_ylim(0, 1.05)
-                for i, v in enumerate(metrics.values()):
+                for i, v in enumerate(train_metrics.values()):
                     ax.text(i, v + 0.01, f"{v:.4f}", ha='center')
-                ax.set_title("Performance Metrics")
+                ax.set_title("Training Performance Metrics (Balanced Data)")
             elif view_idx == 4:
-                tn, fp, fn, tp = conf_matrix
+                tn, fp, fn, tp = train_conf_matrix
                 cm = np.array([[tn, fp], [fn, tp]])
                 sns.heatmap(cm, annot=True, fmt='d', cmap='Greens', ax=ax, cbar=False)
-                ax.set_title("Confusion Matrix")
+                ax.set_title("Training Confusion Matrix")
                 ax.set_xlabel("Predicted")
                 ax.set_ylabel("Actual")
             elif view_idx == 5:
+                ax.bar(test_metrics.keys(), test_metrics.values(), color='skyblue')
+                ax.set_ylim(0, 1.05)
+                for i, v in enumerate(test_metrics.values()):
+                    ax.text(i, v + 0.01, f"{v:.4f}", ha='center')
+                ax.set_title("Testing Performance Metrics (Original Distribution)")
+            elif view_idx == 6:
+                tn, fp, fn, tp = test_conf_matrix
+                cm = np.array([[tn, fp], [fn, tp]])
+                sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax, cbar=False)
+                ax.set_title("Testing Confusion Matrix")
+                ax.set_xlabel("Predicted")
+                ax.set_ylabel("Actual")
+            elif view_idx == 7:
                 if 'Label' in df.columns:
                     df_sample = df.sample(min(50000, len(df)), random_state=42)
                     correlations = df_sample.corr()['Label'].abs().sort_values(ascending=False)
@@ -61,7 +85,7 @@ class Evaluator:
                     ax.set_title(f"Correlation Matrix (Top {top_n} Features Correlated with Label)")
                 else:
                     ax.text(0.5, 0.5, "Label column not found", ha='center', va='center')
-            elif view_idx == 6:
+            elif view_idx == 8:
                 if 'Label' in df.columns:
                     df_sample = df.sample(min(50000, len(df)), random_state=42)
                     corr_matrix = df_sample.corr()
@@ -74,8 +98,8 @@ class Evaluator:
                 else:
                     ax.text(0.5, 0.5, "Label column not found", ha='center', va='center')
             
-            # --- NEW VIEW: DATASET FACTS ---
-            elif view_idx == 7:
+            # --- VIEW: DATASET FACTS ---
+            elif view_idx == 9:
                 ax.axis('off')
                 facts_text = (
                     "CIC-DDoS2019 Dataset Facts\n"

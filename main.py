@@ -35,9 +35,11 @@ if os.path.exists(model_path) and os.path.exists(scaler_path):
     model.load(model_path)
     X_test_scaled = scaler.transform(X_test)
     
-    # Estimate balanced counts for plotting since we skipped SMOTE
-    majority_class_count = max(np.sum(y_train == 0), np.sum(y_train == 1))
-    balanced_counts = {'Benign': majority_class_count, 'Attack': majority_class_count}
+    # Re-generate resampled training data for evaluation even when loading
+    smote = SMOTE(random_state=42)
+    X_train_resampled, y_train_resampled = smote.fit_resample(X_train, y_train)
+    X_train_scaled = scaler.transform(X_train_resampled)
+    balanced_counts = {'Benign': int(np.sum(y_train_resampled == 0)), 'Attack': int(np.sum(y_train_resampled == 1))}
 else:
     # Apply SMOTE to Training Set
     print(f"Before SMOTE - X_train Shape: {X_train.shape}, Benign: {np.sum(y_train == 0)}, Attack: {np.sum(y_train == 1)}")
@@ -65,12 +67,30 @@ else:
 
 # 5. Evaluate & Plot
 eval_tool = Evaluator()
-preds = model.predict(X_test_scaled)
-metrics, conf_data = eval_tool.calculate_metrics(y_test, preds)
 
-print("Results:", metrics)
+# Training Evaluation
+print("Evaluating on training data...")
+train_preds = model.predict(X_train_scaled)
+train_metrics, train_conf_data = eval_tool.calculate_metrics(y_train_resampled, train_preds)
+
+# Testing Evaluation
+print("Evaluating on testing data...")
+test_preds = model.predict(X_test_scaled)
+test_metrics, test_conf_data = eval_tool.calculate_metrics(y_test, test_preds)
+
+print("Training Results:", train_metrics)
+print("Testing Results:", test_metrics)
 
 # Plot interactive figures in one window
 raw_counts = loader.raw_counts
 print("Launching interactive chart viewer...")
-eval_tool.plot_interactive_view(raw_counts, before_smote_counts, balanced_counts, metrics, conf_data, train_df)
+eval_tool.plot_interactive_view(
+    raw_counts, 
+    before_smote_counts, 
+    balanced_counts, 
+    train_metrics, 
+    train_conf_data, 
+    test_metrics, 
+    test_conf_data, 
+    train_df
+)
