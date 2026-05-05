@@ -4,7 +4,7 @@ from data_loader import DataLoader
 from custom_model import CustomLogisticRegression, ManualScaler
 from evaluator import Evaluator
 import numpy as np
-from imblearn.over_sampling import SMOTE
+from gan_balancer import GANBalancer
 import os
 
 # 1. Load Data (Checks for cache automatically)
@@ -36,16 +36,17 @@ if os.path.exists(model_path) and os.path.exists(scaler_path):
     X_test_scaled = scaler.transform(X_test)
     
     # Re-generate resampled training data for evaluation even when loading
-    smote = SMOTE(random_state=42)
-    X_train_resampled, y_train_resampled = smote.fit_resample(X_train, y_train)
+    print("Balancing training set with GAN...")
+    balancer = GANBalancer(epochs=20) # Lower epochs for evaluation reload
+    X_train_resampled, y_train_resampled = balancer.balance(X_train, y_train)
     X_train_scaled = scaler.transform(X_train_resampled)
     balanced_counts = {'Benign': int(np.sum(y_train_resampled == 0)), 'Attack': int(np.sum(y_train_resampled == 1))}
 else:
-    # Apply SMOTE to Training Set
-    print(f"Before SMOTE - X_train Shape: {X_train.shape}, Benign: {np.sum(y_train == 0)}, Attack: {np.sum(y_train == 1)}")
-    smote = SMOTE(random_state=42)
-    X_train_resampled, y_train_resampled = smote.fit_resample(X_train, y_train)
-    print(f"After SMOTE - X_train Shape: {X_train_resampled.shape}, Benign: {np.sum(y_train_resampled == 0)}, Attack: {np.sum(y_train_resampled == 1)}")
+    # Apply GAN Balancing to Training Set
+    print(f"Before GAN Balancing - X_train Shape: {X_train.shape}, Benign: {np.sum(y_train == 0)}, Attack: {np.sum(y_train == 1)}")
+    balancer = GANBalancer(epochs=50)
+    X_train_resampled, y_train_resampled = balancer.balance(X_train, y_train)
+    print(f"After GAN Balancing - X_train Shape: {X_train_resampled.shape}, Benign: {np.sum(y_train_resampled == 0)}, Attack: {np.sum(y_train_resampled == 1)}")
 
     # 3. Scaling
     X_train_scaled = scaler.fit_transform(X_train_resampled)
