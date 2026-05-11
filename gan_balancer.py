@@ -69,7 +69,7 @@ class GANBalancer:
         print(f"Training GAN to generate {n_to_generate:,} samples of class {minority_class}...")
         
         # Prepare minority data
-        X_minority = X_df[y_df == minority_class].values
+        X_minority = X_df[y_df == minority_class].values.copy()
         X_tensor = torch.FloatTensor(X_minority).to(self.device)
         dataset = TensorDataset(X_tensor)
         dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
