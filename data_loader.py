@@ -29,11 +29,13 @@ class DataLoader:
         df = df.select_dtypes(include=[np.number])
 
         # Replace infs and drop ANY row with a NaN
+        initial_count = len(df)
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
         df.dropna(axis=0, how='any', inplace=True) # Ensure rows are dropped
+        dropped_count = initial_count - len(df)
 
         if not balance:
-            return df
+            return df, dropped_count
 
         # Balance classes
         if 'Label' in df.columns:
@@ -43,12 +45,12 @@ class DataLoader:
             
             if n_samples > 0:
                 df = pd.concat([benign.sample(n_samples), attack.sample(n_samples)])
-                return df.sample(frac=1).reset_index(drop=True)
-        return pd.DataFrame()
+                return df.sample(frac=1).reset_index(drop=True), dropped_count
+        return pd.DataFrame(), dropped_count
 
     def get_data(self, max_samples_per_class=500000, test_size=0.2):
         import json
-        self.raw_counts = {'Benign': 0, 'Attack': 0}
+        self.raw_counts = {'Benign': 0, 'Attack': 0, 'Total Dropped': 0, 'Total Saved': 0}
         counts_path = "data/counts.json"
         
         # Check cache
@@ -108,8 +110,10 @@ class DataLoader:
                 row_count = 0
                 chunks = pd.read_csv(path, low_memory=False, on_bad_lines='skip', chunksize=200000)
                 
+                total_dropped = 0
                 for chunk in chunks:
-                    cleaned = self.clean_data(chunk, balance=False)
+                    cleaned, dropped = self.clean_data(chunk, balance=False)
+                    total_dropped += dropped
                     if not cleaned.empty:
                         # Enforce schema consistency
                         if self.feature_cols is None:
@@ -127,6 +131,10 @@ class DataLoader:
                 if writer:
                     writer.close()
                     file_info[temp_path] = row_count
+                    self.raw_counts['Total Saved'] += row_count
+                    if total_dropped > 0:
+                        self.raw_counts['Total Dropped'] += total_dropped
+                        print(f"    - Total dropped {total_dropped:,} packets containing NaN or Infinity.")
                     print(f"    -> Saved {row_count:,} samples to temp cache.")
                 else:
                     print(f"    -> No valid samples found.")

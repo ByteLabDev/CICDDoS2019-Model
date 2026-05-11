@@ -38,8 +38,10 @@ class Evaluator:
             ax.axis('on')  # Ensure axis is on (it might have been turned off by View 9)
             
             if view_idx == 0:
-                ax.bar(raw_counts.keys(), raw_counts.values(), color=['lightgreen', 'salmon'])
-                ax.set_title(f"Raw Data Class Imbalance\n(Total: {sum(raw_counts.values()):,})")
+                # Filter out stats like 'Total Dropped' and 'Total Saved' for the bar chart
+                plot_data = {k: v for k, v in raw_counts.items() if k in ['Benign', 'Attack']}
+                ax.bar(plot_data.keys(), plot_data.values(), color=['lightgreen', 'salmon'])
+                ax.set_title(f"Raw Data Class Imbalance\n(Total: {sum(plot_data.values()):,})")
                 ax.set_ylabel("Number of Samples")
             elif view_idx == 1:
                 ax.bar(before_smote_counts.keys(), before_smote_counts.values(), color=['lightgreen', 'salmon'])
@@ -112,7 +114,8 @@ class Evaluator:
                     "• Primary Paper: Sharafaldin et al. (2019)\n\n"
                     "Preprocessing Applied in this Session:\n"
                     f"• Current Column Count: {len(df.columns)}\n"
-                    f"• Total Samples: {len(df):,}\n"
+                    f"• Total Valid Samples: {raw_counts.get('Total Saved', len(df)):,}\n"
+                    f"• Dropped (NaN/Inf): {raw_counts.get('Total Dropped', 0):,}\n"
                     "• Balanced via SMOTE: Yes\n"
                     "• Non-numeric Labels: Removed"
                 )
