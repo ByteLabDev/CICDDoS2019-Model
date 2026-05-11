@@ -1,6 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 class Evaluator:
     def calculate_metrics(self, y_true, y_pred):
@@ -16,8 +14,10 @@ class Evaluator:
 
         return {"Accuracy": accuracy, "Precision": precision, "Recall": recall, "F1": f1}, [tn, fp, fn, tp]
 
-    def plot_interactive_view(self, raw_counts, before_smote_counts, balanced_counts, train_metrics, train_conf_matrix, test_metrics, test_conf_matrix, df, top_n=15):
+    def plot_interactive_view(self, raw_counts, before_gan_counts, balanced_counts, test_counts, train_metrics, train_conf_matrix, test_metrics, test_conf_matrix, df, top_n=15):
         import pandas as pd
+        import matplotlib.pyplot as plt
+        import seaborn as sns
         
         fig, ax = plt.subplots(figsize=(12, 9))
         
@@ -25,7 +25,7 @@ class Evaluator:
         original_ax_pos = ax.get_position()
         
         current_view = [0]
-        views_count = 13
+        views_count = 14
         
         def draw_view(view_idx):
             # Clear any existing colorbars/extra axes from previous views
@@ -44,40 +44,44 @@ class Evaluator:
                 ax.set_title(f"Raw Data Class Imbalance\n(Total: {sum(plot_data.values()):,})")
                 ax.set_ylabel("Number of Samples")
             elif view_idx == 1:
-                ax.bar(before_smote_counts.keys(), before_smote_counts.values(), color=['lightgreen', 'salmon'])
-                ax.set_title(f"Before SMOTE Data (Training Split)\n(Total: {sum(before_smote_counts.values()):,})")
+                ax.bar(before_gan_counts.keys(), before_gan_counts.values(), color=['lightgreen', 'salmon'])
+                ax.set_title(f"Before GAN Balancing (Training Split)\n(Total: {sum(before_gan_counts.values()):,})")
                 ax.set_ylabel("Number of Samples")
             elif view_idx == 2:
                 ax.bar(balanced_counts.keys(), balanced_counts.values(), color=['lightgreen', 'salmon'])
-                ax.set_title(f"After SMOTE Data (Used for Training)\n(Total: {sum(balanced_counts.values()):,})")
+                ax.set_title(f"After GAN Balancing (Used for Training)\n(Total: {sum(balanced_counts.values()):,})")
                 ax.set_ylabel("Number of Samples")
             elif view_idx == 3:
+                ax.bar(test_counts.keys(), test_counts.values(), color=['lightgreen', 'salmon'])
+                ax.set_title(f"Class Imbalance in Testing Split\n(Total: {sum(test_counts.values()):,})")
+                ax.set_ylabel("Number of Samples")
+            elif view_idx == 4:
                 ax.bar(train_metrics.keys(), train_metrics.values(), color='mediumseagreen')
                 ax.set_ylim(0, 1.05)
                 for i, v in enumerate(train_metrics.values()):
                     ax.text(i, v + 0.01, f"{v:.4f}", ha='center')
                 ax.set_title("Training Performance Metrics (Balanced Data)")
-            elif view_idx == 4:
+            elif view_idx == 5:
                 tn, fp, fn, tp = train_conf_matrix
                 cm = np.array([[tn, fp], [fn, tp]])
                 sns.heatmap(cm, annot=True, fmt='d', cmap='Greens', ax=ax, cbar=False)
                 ax.set_title("Training Confusion Matrix")
                 ax.set_xlabel("Predicted")
                 ax.set_ylabel("Actual")
-            elif view_idx == 5:
+            elif view_idx == 6:
                 ax.bar(test_metrics.keys(), test_metrics.values(), color='skyblue')
                 ax.set_ylim(0, 1.05)
                 for i, v in enumerate(test_metrics.values()):
                     ax.text(i, v + 0.01, f"{v:.4f}", ha='center')
                 ax.set_title("Testing Performance Metrics (Original Distribution)")
-            elif view_idx == 6:
+            elif view_idx == 7:
                 tn, fp, fn, tp = test_conf_matrix
                 cm = np.array([[tn, fp], [fn, tp]])
                 sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax, cbar=False)
                 ax.set_title("Testing Confusion Matrix")
                 ax.set_xlabel("Predicted")
                 ax.set_ylabel("Actual")
-            elif view_idx == 7:
+            elif view_idx == 8:
                 if 'Label' in df.columns:
                     df_sample = df.sample(min(50000, len(df)), random_state=42)
                     correlations = df_sample.corr()['Label'].abs().sort_values(ascending=False)
@@ -87,7 +91,7 @@ class Evaluator:
                     ax.set_title(f"Correlation Matrix (Top {top_n} Features Correlated with Label)")
                 else:
                     ax.text(0.5, 0.5, "Label column not found", ha='center', va='center')
-            elif view_idx == 8:
+            elif view_idx == 9:
                 if 'Label' in df.columns:
                     df_sample = df.sample(min(50000, len(df)), random_state=42)
                     corr_matrix = df_sample.corr()
@@ -101,7 +105,7 @@ class Evaluator:
                     ax.text(0.5, 0.5, "Label column not found", ha='center', va='center')
             
             # --- VIEW: DATASET FACTS ---
-            elif view_idx == 9:
+            elif view_idx == 10:
                 ax.axis('off')
                 facts_text = (
                     "CIC-DDoS2019 Dataset Facts\n"
@@ -116,14 +120,14 @@ class Evaluator:
                     f"• Current Column Count: {len(df.columns)}\n"
                     f"• Total Valid Samples: {raw_counts.get('Total Saved', len(df)):,}\n"
                     f"• Dropped (NaN/Inf): {raw_counts.get('Total Dropped', 0):,}\n"
-                    "• Balanced via SMOTE: Yes\n"
+                    "• Balanced via GAN: Yes\n"
                     "• Non-numeric Labels: Removed"
                 )
                 ax.text(0.05, 0.95, facts_text, transform=ax.transAxes, fontsize=12,
                         verticalalignment='top', family='monospace', bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
             
             # --- VIEW: ENTRIES PER FILE ---
-            elif view_idx == 10:
+            elif view_idx == 11:
                 entries_per_file = raw_counts.get('Entries Per File', {})
                 if entries_per_file:
                     files = list(entries_per_file.keys())
@@ -143,7 +147,7 @@ class Evaluator:
                             ha='center', va='center', fontsize=12)
 
             # --- VIEW: TRAINING SAMPLES PER FILE ---
-            elif view_idx == 11:
+            elif view_idx == 12:
                 train_per_file = raw_counts.get('Train Samples Per File', {})
                 if train_per_file:
                     files = list(train_per_file.keys())
@@ -163,7 +167,7 @@ class Evaluator:
                             ha='center', va='center', fontsize=12)
 
             # --- VIEW: TESTING SAMPLES PER FILE ---
-            elif view_idx == 12:
+            elif view_idx == 13:
                 test_per_file = raw_counts.get('Test Samples Per File', {})
                 if test_per_file:
                     files = list(test_per_file.keys())

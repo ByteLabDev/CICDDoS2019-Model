@@ -1,11 +1,3 @@
-# data.py
-
-import pandas as pd
-import numpy as np
-import os
-
-import pandas as pd
-import numpy as np
 import os
 
 class DataLoader:
@@ -15,6 +7,8 @@ class DataLoader:
         self.test_path = test_path
 
     def clean_data(self, df, balance=True):
+        import pandas as pd
+        import numpy as np
         df.columns = df.columns.str.strip()
         
         # Extract labels early
@@ -50,6 +44,8 @@ class DataLoader:
 
     def get_data(self, max_samples_per_class=500000, test_size=0.2):
         import json
+        import pandas as pd
+        import numpy as np
         self.raw_counts = {'Benign': 0, 'Attack': 0, 'Total Dropped': 0, 'Total Saved': 0, 'Entries Per File': {}, 'Train Samples Per File': {}, 'Test Samples Per File': {}}
         counts_path = "data/counts.json"
         
@@ -169,12 +165,8 @@ class DataLoader:
                 import pyarrow.parquet as pq
                 pf = pq.ParquetFile(temp_path)
                 
-                # OPTIMIZATION: If the first row group has enough rows, only read that
-                if pf.num_row_groups > 1 and pf.metadata.row_group(0).num_rows >= min_samples:
-                    table = pf.read_row_group(0)
-                    df = table.to_pandas()
-                else:
-                    df = pd.read_parquet(temp_path)
+                # Always read the full parquet to ensure representative sampling
+                df = pd.read_parquet(temp_path)
                 
                 if len(df) > min_samples:
                     sampled_df = df.sample(n=min_samples, random_state=42).copy()
@@ -183,6 +175,7 @@ class DataLoader:
                 
                 # Tag with source file for later distribution tracking
                 sampled_df['_source_file'] = filename
+                sampled_df.attrs['source_path'] = temp_path # Store original path for splitting
                 
                 # Track raw counts for reporting
                 benign_in_file = int(np.sum(sampled_df['Label'] == 0))
@@ -199,14 +192,34 @@ class DataLoader:
         if not all_dfs:
             raise ValueError("Failed to collect any data during Step 2.")
 
-        # 5. Combine and Split
-        full_df = pd.concat(all_dfs, ignore_index=True).sample(frac=1, random_state=42).reset_index(drop=True)
-        print(f"Total samples combined: {len(full_df):,}")
+        # 5. File-Based Split (Prevents flow leakage)
+        # Instead of shuffling all rows, we split the files themselves
+        all_paths = list(file_info.keys())
+        import random
+        random.seed(42)
+        random.shuffle(all_paths)
+        
+        split_idx = int(len(all_paths) * (1 - test_size))
+        train_paths = set(all_paths[:split_idx])
+        test_paths = set(all_paths[split_idx:])
+        
+        train_list = []
+        test_list = []
+        
+        for df in all_dfs:
+            path = df.attrs.get('source_path')
+            if path in train_paths:
+                train_list.append(df)
+            else:
+                test_list.append(df)
 
-        # Split into train and test
-        split_idx = int(len(full_df) * (1 - test_size))
-        train_df = full_df.iloc[:split_idx].copy()
-        test_df = full_df.iloc[split_idx:].copy()
+        print(f"File-Based Split: {len(train_paths)} files for training, {len(test_paths)} files for testing.")
+
+        # Combine and shuffle independently
+        train_df = pd.concat(train_list, ignore_index=True).sample(frac=1, random_state=42).reset_index(drop=True)
+        test_df = pd.concat(test_list, ignore_index=True).sample(frac=1, random_state=42).reset_index(drop=True)
+        
+        print(f"Total samples: Train={len(train_df):,}, Test={len(test_df):,}")
 
         # Calculate samples per file for train/test splits
         self.raw_counts['Train Samples Per File'] = train_df['_source_file'].value_counts().to_dict()
@@ -224,4 +237,4 @@ class DataLoader:
         with open(counts_path, "w") as f:
             json.dump(self.raw_counts, f)
             
-        return train_df, test_df
+        return train_df, test_df
