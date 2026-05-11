@@ -25,7 +25,7 @@ class Evaluator:
         original_ax_pos = ax.get_position()
         
         current_view = [0]
-        views_count = 10
+        views_count = 13
         
         def draw_view(view_idx):
             # Clear any existing colorbars/extra axes from previous views
@@ -122,6 +122,66 @@ class Evaluator:
                 ax.text(0.05, 0.95, facts_text, transform=ax.transAxes, fontsize=12,
                         verticalalignment='top', family='monospace', bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
             
+            # --- VIEW: ENTRIES PER FILE ---
+            elif view_idx == 10:
+                entries_per_file = raw_counts.get('Entries Per File', {})
+                if entries_per_file:
+                    files = list(entries_per_file.keys())
+                    counts = list(entries_per_file.values())
+                    sorted_indices = np.argsort(counts)
+                    files = [files[i] for i in sorted_indices]
+                    counts = [counts[i] for i in sorted_indices]
+                    clean_files = [f.replace('.parquet', '') for f in files]
+                    ax.barh(clean_files, counts, color='teal')
+                    ax.set_title("Total Data Entries Collected per File")
+                    ax.set_xlabel("Number of Samples")
+                    from matplotlib.ticker import StrMethodFormatter
+                    ax.xaxis.set_major_formatter(StrMethodFormatter('{x:,.0f}'))
+                    plt.tight_layout()
+                else:
+                    ax.text(0.5, 0.5, "No per-file entry data available.\n(May need to re-process raw data)", 
+                            ha='center', va='center', fontsize=12)
+
+            # --- VIEW: TRAINING SAMPLES PER FILE ---
+            elif view_idx == 11:
+                train_per_file = raw_counts.get('Train Samples Per File', {})
+                if train_per_file:
+                    files = list(train_per_file.keys())
+                    counts = list(train_per_file.values())
+                    sorted_indices = np.argsort(counts)
+                    files = [files[i] for i in sorted_indices]
+                    counts = [counts[i] for i in sorted_indices]
+                    clean_files = [f.replace('.parquet', '') for f in files]
+                    ax.barh(clean_files, counts, color='forestgreen')
+                    ax.set_title("Samples Used for TRAINING (per File)")
+                    ax.set_xlabel("Number of Samples")
+                    from matplotlib.ticker import StrMethodFormatter
+                    ax.xaxis.set_major_formatter(StrMethodFormatter('{x:,.0f}'))
+                    plt.tight_layout()
+                else:
+                    ax.text(0.5, 0.5, "No training distribution data available.\n(May need to re-process raw data)", 
+                            ha='center', va='center', fontsize=12)
+
+            # --- VIEW: TESTING SAMPLES PER FILE ---
+            elif view_idx == 12:
+                test_per_file = raw_counts.get('Test Samples Per File', {})
+                if test_per_file:
+                    files = list(test_per_file.keys())
+                    counts = list(test_per_file.values())
+                    sorted_indices = np.argsort(counts)
+                    files = [files[i] for i in sorted_indices]
+                    counts = [counts[i] for i in sorted_indices]
+                    clean_files = [f.replace('.parquet', '') for f in files]
+                    ax.barh(clean_files, counts, color='royalblue')
+                    ax.set_title("Samples Used for TESTING (per File)")
+                    ax.set_xlabel("Number of Samples")
+                    from matplotlib.ticker import StrMethodFormatter
+                    ax.xaxis.set_major_formatter(StrMethodFormatter('{x:,.0f}'))
+                    plt.tight_layout()
+                else:
+                    ax.text(0.5, 0.5, "No testing distribution data available.\n(May need to re-process raw data)", 
+                            ha='center', va='center', fontsize=12)
+
             fig.canvas.draw_idle()
 
         def next_view(*args, **kwargs):

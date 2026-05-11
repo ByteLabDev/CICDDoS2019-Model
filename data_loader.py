@@ -50,7 +50,7 @@ class DataLoader:
 
     def get_data(self, max_samples_per_class=500000, test_size=0.2):
         import json
-        self.raw_counts = {'Benign': 0, 'Attack': 0, 'Total Dropped': 0, 'Total Saved': 0}
+        self.raw_counts = {'Benign': 0, 'Attack': 0, 'Total Dropped': 0, 'Total Saved': 0, 'Entries Per File': {}, 'Train Samples Per File': {}, 'Test Samples Per File': {}}
         counts_path = "data/counts.json"
         
         # Check cache
@@ -78,7 +78,7 @@ class DataLoader:
         os.makedirs(temp_dir, exist_ok=True)
         file_info = {} # {temp_parquet_path: count}
         
-        print("Step 1: Cleaning and caching datasets as Parquet...")
+        print("Step 1: Checking for cached Parquet files and cleaning new datasets...")
         self.feature_cols = None # To store the master schema
         
         for path in all_files:
@@ -96,6 +96,10 @@ class DataLoader:
                     # Capture schema if not already set
                     if self.feature_cols is None:
                         self.feature_cols = meta.schema.names
+                    
+                    # Track entries per file
+                    self.raw_counts['Entries Per File'][unique_name] = meta.num_rows
+                    
                     print(f"  Found cached temp file: {filename} ({meta.num_rows:,} samples)")
                     continue
                 except:
@@ -132,6 +136,12 @@ class DataLoader:
                     writer.close()
                     file_info[temp_path] = row_count
                     self.raw_counts['Total Saved'] += row_count
+                    
+                    # Track entries per file
+                    if 'Entries Per File' not in self.raw_counts:
+                        self.raw_counts['Entries Per File'] = {}
+                    self.raw_counts['Entries Per File'][unique_name] = row_count
+
                     if total_dropped > 0:
                         self.raw_counts['Total Dropped'] += total_dropped
                         print(f"    - Total dropped {total_dropped:,} packets containing NaN or Infinity.")
@@ -171,6 +181,9 @@ class DataLoader:
                 else:
                     sampled_df = df.copy()
                 
+                # Tag with source file for later distribution tracking
+                sampled_df['_source_file'] = filename
+                
                 # Track raw counts for reporting
                 benign_in_file = int(np.sum(sampled_df['Label'] == 0))
                 attack_in_file = int(np.sum(sampled_df['Label'] == 1))
@@ -190,15 +203,18 @@ class DataLoader:
         full_df = pd.concat(all_dfs, ignore_index=True).sample(frac=1, random_state=42).reset_index(drop=True)
         print(f"Total samples combined: {len(full_df):,}")
 
-        # Cleanup temp directory
-        import shutil
-        print("Cleaning up temporary files...")
-        shutil.rmtree(temp_dir, ignore_errors=True) # Ignore permission errors
-
         # Split into train and test
         split_idx = int(len(full_df) * (1 - test_size))
-        train_df = full_df.iloc[:split_idx]
-        test_df = full_df.iloc[split_idx:]
+        train_df = full_df.iloc[:split_idx].copy()
+        test_df = full_df.iloc[split_idx:].copy()
+
+        # Calculate samples per file for train/test splits
+        self.raw_counts['Train Samples Per File'] = train_df['_source_file'].value_counts().to_dict()
+        self.raw_counts['Test Samples Per File'] = test_df['_source_file'].value_counts().to_dict()
+
+        # Drop the helper column before saving/returning
+        train_df.drop(columns=['_source_file'], inplace=True)
+        test_df.drop(columns=['_source_file'], inplace=True)
 
         # Save to cache
         os.makedirs(os.path.dirname(self.train_path), exist_ok=True)
