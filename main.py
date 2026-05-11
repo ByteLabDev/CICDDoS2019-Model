@@ -46,16 +46,12 @@ def main():
         model.load(model_path)
         X_test_scaled = scaler.transform(X_test)
         
-        # Re-generate resampled training data for evaluation even when loading
-        print("\n[Data Balancing]")
-        print("Loading Generative AI components (Torch)...", end="", flush=True)
-        from gan_balancer import GANBalancer
-        print(" Done.")
-        print("Balancing training set with GAN...")
-        balancer = GANBalancer(epochs=20) # Lower epochs for evaluation reload
-        X_train_resampled, y_train_resampled = balancer.balance(X_train, y_train)
+        # Skip GAN re-balancing when loading pre-trained model for speed and consistency
+        print("\n[Evaluation Setup]")
+        print("Using original training distribution for evaluation (Skipping GAN)...")
+        X_train_resampled, y_train_resampled = X_train, y_train
         X_train_scaled = scaler.transform(X_train_resampled)
-        balanced_counts = {'Benign': int(np.sum(y_train_resampled == 0)), 'Attack': int(np.sum(y_train_resampled == 1))}
+        balanced_counts = before_gan_counts.copy()
     else:
         # Apply GAN Balancing to Training Set
         print("\n[Data Balancing]")
