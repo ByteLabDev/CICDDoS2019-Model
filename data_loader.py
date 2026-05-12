@@ -1,10 +1,9 @@
 import os
 
 class DataLoader:
-    def __init__(self, raw_data_dir, train_path='data/train_data.parquet', test_path='data/test_data.parquet'):
+    def __init__(self, raw_data_dir, data_path='data/full_data.parquet'):
         self.raw_dir = raw_data_dir
-        self.train_path = train_path
-        self.test_path = test_path
+        self.data_path = data_path
 
     def clean_data(self, df, balance=True):
         import pandas as pd
@@ -50,12 +49,12 @@ class DataLoader:
         counts_path = "data/counts.json"
         
         # Check cache
-        if os.path.exists(self.train_path) and os.path.exists(self.test_path):
-            print(f"Loading cached data from {self.train_path} and {self.test_path}...")
+        if os.path.exists(self.data_path):
+            print(f"Loading cached data from {self.data_path}...")
             if os.path.exists(counts_path):
                 with open(counts_path, "r") as f:
                     self.raw_counts = json.load(f)
-            return pd.read_parquet(self.train_path), pd.read_parquet(self.test_path)
+            return pd.read_parquet(self.data_path)
 
         print("No cache found. Processing raw files...")
         
@@ -192,49 +191,19 @@ class DataLoader:
         if not all_dfs:
             raise ValueError("Failed to collect any data during Step 2.")
 
-        # 5. File-Based Split (Prevents flow leakage)
-        # Instead of shuffling all rows, we split the files themselves
-        all_paths = list(file_info.keys())
-        import random
-        random.seed(42)
-        random.shuffle(all_paths)
+        # Combine all sampled data
+        full_df = pd.concat(all_dfs, ignore_index=True).sample(frac=1, random_state=42).reset_index(drop=True)
         
-        split_idx = int(len(all_paths) * (1 - test_size))
-        train_paths = set(all_paths[:split_idx])
-        test_paths = set(all_paths[split_idx:])
+        # Track final counts for reporting
+        self.raw_counts['Train Samples Per File'] = full_df['_source_file'].value_counts().to_dict()
         
-        train_list = []
-        test_list = []
-        
-        for df in all_dfs:
-            path = df.attrs.get('source_path')
-            if path in train_paths:
-                train_list.append(df)
-            else:
-                test_list.append(df)
-
-        print(f"File-Based Split: {len(train_paths)} files for training, {len(test_paths)} files for testing.")
-
-        # Combine and shuffle independently
-        train_df = pd.concat(train_list, ignore_index=True).sample(frac=1, random_state=42).reset_index(drop=True)
-        test_df = pd.concat(test_list, ignore_index=True).sample(frac=1, random_state=42).reset_index(drop=True)
-        
-        print(f"Total samples: Train={len(train_df):,}, Test={len(test_df):,}")
-
-        # Calculate samples per file for train/test splits
-        self.raw_counts['Train Samples Per File'] = train_df['_source_file'].value_counts().to_dict()
-        self.raw_counts['Test Samples Per File'] = test_df['_source_file'].value_counts().to_dict()
-
-        # Drop the helper column before saving/returning
-        train_df.drop(columns=['_source_file'], inplace=True)
-        test_df.drop(columns=['_source_file'], inplace=True)
+        print(f"Total samples collected: {len(full_df):,}")
 
         # Save to cache
-        os.makedirs(os.path.dirname(self.train_path), exist_ok=True)
-        train_df.to_parquet(self.train_path)
-        test_df.to_parquet(self.test_path)
+        os.makedirs(os.path.dirname(self.data_path), exist_ok=True)
+        full_df.to_parquet(self.data_path)
         
         with open(counts_path, "w") as f:
             json.dump(self.raw_counts, f)
             
-        return train_df, test_df
+        return full_df

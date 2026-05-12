@@ -45,7 +45,8 @@ class GANBalancer:
         self.epochs = epochs
         self.batch_size = batch_size
         self.lr = lr
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cpu")
         self.generator = None
 
     def balance(self, X, y):
